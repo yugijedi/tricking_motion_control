@@ -1,0 +1,31 @@
+<mujoco model="resizable_box">
+  <!-- keep tiny lower bounds to avoid NaNs if anything ends up ~0 -->
+  <compiler inertiafromgeom="false" boundmass="1e-6" boundinertia="1e-8"/>
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+
+  <worldbody>
+    <geom name="floor" type="plane" size="5 5 0.1"/>
+
+    <!-- The actual box (we’ll set its inertia every step in Python) -->
+    <body name="box" pos="0 0 0.3">
+      <freejoint/>
+      <inertial mass="1.0" diaginertia="0.01 0.01 0.01" pos="0 0 0"/>
+      <geom name="gbox" type="box" size="0.20 0.20 0.20" rgba="1 0.6 0 1"/>
+
+      <!-- Dummy joints whose qpos are the half-extents (ux, uy, uz) -->
+      <body name="knobs">
+        <!-- tiny inertial so this moving body is not massless -->
+        <inertial mass="1e-6" diaginertia="1e-8 1e-8 1e-8" pos="0 0 0"/>
+        <joint name="ux_joint" type="slide" axis="1 0 0" range="0 1.0" damping="20"/>
+        <joint name="uy_joint" type="slide" axis="0 1 0" range="0 1.0" damping="20"/>
+        <joint name="uz_joint" type="slide" axis="0 0 1" range="0 1.0" damping="20"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="ux" joint="ux_joint" kp="300" ctrllimited="true" ctrlrange="0 1.0"/>
+    <position name="uy" joint="uy_joint" kp="300" ctrllimited="true" ctrlrange="0 1.0"/>
+    <position name="uz" joint="uz_joint" kp="300" ctrllimited="true" ctrlrange="0 1.0"/>
+  </actuator>
+</mujoco>
