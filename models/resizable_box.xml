@@ -1,10 +1,10 @@
 <mujoco model="resizable_box">
   <!-- keep tiny lower bounds to avoid NaNs if anything ends up ~0 -->
   <compiler inertiafromgeom="false" boundmass="1e-6" boundinertia="1e-8"/>
-  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <option timestep="0.002" gravity="0 0 0"/>
 
   <worldbody>
-    <geom name="floor" type="plane" size="5 5 0.1"/>
+    <geom name="floor" type="plane" size="5 5 0.1" rgba="1 1 1 0.5"/>
 
     <!-- The actual box (we’ll set its inertia every step in Python) -->
     <body name="box" pos="0 0 0.3">
