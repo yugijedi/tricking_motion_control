@@ -44,6 +44,8 @@ class MujocoEnv:
         if isinstance(self.integrator, LGVI):
             self.integrator.m = float(self.model.body_mass[self.base_bid])
             self.integrator.J = np.diag(self.model.body_inertia[self.base_bid])
+            self.integrator.nq = int(self.model.nq)
+            self.integrator.nv = int(self.model.nv)
 
     def _find_free_root_body(self):
         for j in range(self.model.njnt):
@@ -121,54 +123,71 @@ class MujocoEnv:
 
     def step(self, action):
         if self.mode == 'mujoco_builtin':
-            # sync dt with MuJoCo's timestep
+            # keep env dt aligned with MuJoCo
             if abs(float(self.model.opt.timestep) - float(self.dt)) > 1e-12:
                 self.dt = float(self.model.opt.timestep)
 
-            # Position actuators target the three size joints
-            self.data.ctrl[0:3] = action  # assumes order [ux, uy, uz]
+            # (0) cache inertia BEFORE the step – this is what mj_step uses
+            J_old = np.diag(self.model.body_inertia[self.base_bid].copy())
+
+            # (1) drive size joints with position actuators and step physics
+            self.data.ctrl[0:3] = action  # [ux, uy, uz]
             mujoco.mj_step(self.model, self.data)
 
-            # Mirror size joints -> geom size, optionally update inertia (keep mass constant here)
+            # (2) compute the world angular momentum *after the step* with J_old
+            R_post = self.data.xmat[self.base_bid].reshape(3, 3)
+            w_post = self.data.qvel[3:6].copy()
+            H_world_post = R_post @ (J_old @ w_post)
+
+            # (3) mirror qpos -> geom size, update body inertia for new half-extents
             self._apply_geom_size_from_knobs()
             self._update_body_inertia_from_size(mass=self.base_mass)
+            J_new = np.diag(self.model.body_inertia[self.base_bid].copy())
 
-            # (Not required for built-in integration, but harmless)
+            # (4) momentum-preserving remap of angular velocity for the inertia jump
+            self.data.qvel[3:6] = np.linalg.solve(J_new, R_post.T @ H_world_post)
+
+            # (5) refresh caches; time already advanced by mj_step
+            mujoco.mj_forward(self.model, self.data)
+            self.t = float(self.data.time)
+
+            # (optional) keep LGVI in sync even in builtin mode; harmless
             if isinstance(self.integrator, LGVI):
                 self.integrator.m = float(self.model.body_mass[self.base_bid])
-                self.integrator.J = np.diag(self.model.body_inertia[self.base_bid])
+                self.integrator.J = J_new
                 self.integrator.nq = int(self.model.nq)
                 self.integrator.nv = int(self.model.nv)
 
-            mujoco.mj_forward(self.model, self.data)  # refresh caches with new size/inertia
-            self.t = float(self.data.time)
-
         else:  # 'custom' (LGVI on free base)
-            # 1) Set size joints kinematically from action and zero their velocities
+            # --- 0) cache current spatial angular momentum before we change size/inertia ---
+            Rwb = self.data.xmat[self.base_bid].reshape(3, 3)
+            J_old = np.diag(self.model.body_inertia[self.base_bid].copy())
+            omega_b_old = self.data.qvel[3:6].copy()
+            H_world_prev = Rwb @ (J_old @ omega_b_old)
+            # --- 1) set size joints kinematically from action and zero their velocities ---
             self.data.qpos[self.adr_ux] = float(action[0])
             self.data.qpos[self.adr_uy] = float(action[1])
             self.data.qpos[self.adr_uz] = float(action[2])
             self.data.qvel[self.dadr_ux] = 0.0
             self.data.qvel[self.dadr_uy] = 0.0
             self.data.qvel[self.dadr_uz] = 0.0
-
-            # 2) Mirror to geom size and (optionally) update inertia; keep mass constant here
+            # --- 2) mirror to geom size and update inertia (keep mass constant here) ---
             self._apply_geom_size_from_knobs()
             self._update_body_inertia_from_size(mass=self.base_mass)
-
-            # 3) Sync LGVI with current model params
+            # --- 3) momentum-preserving remap of angular velocity due to J change ---
+            J_new = np.diag(self.model.body_inertia[self.base_bid].copy())
+            # orientation R hasn't changed yet, so we can reuse Rwb
+            omega_b_new = np.linalg.solve(J_new, Rwb.T @ H_world_prev)
+            self.data.qvel[3:6] = omega_b_new
+            # --- 4) sync LGVI parameters to current m,J ---
             if isinstance(self.integrator, LGVI):
                 self.integrator.m = float(self.model.body_mass[self.base_bid])
-                self.integrator.J = np.diag(self.model.body_inertia[self.base_bid])
-                self.integrator.nq = int(self.model.nq)
-                self.integrator.nv = int(self.model.nv)
-
-            # 4) Recompute caches (contacts, Jacobians, etc.) at this resized state
+                self.integrator.J = J_new
+            # --- 5) recompute caches at this resized state and integrate one step ---
             mujoco.mj_forward(self.model, self.data)
-
-            # 5) Integrate *only* the free base with LGVI; size joints are held kinematic
             x = self.pack_state()
-            f = lambda tt, xx: self.dynamics_wrench(tt, xx, u=np.zeros(3))  # gravity-only wrench
+            # gravity-only wrench (no external torques)
+            f = lambda tt, xx: self.dynamics_wrench(tt, xx, u=np.zeros(3))
             self.t, x_next = self.integrator.step(f, self.t, x, self.dt)
             self.unpack_state(x_next, advance_time=True)
 
@@ -188,6 +207,8 @@ class MujocoEnv:
         if isinstance(self.integrator, LGVI):
             self.integrator.m = float(self.model.body_mass[self.base_bid])
             self.integrator.J = np.diag(self.model.body_inertia[self.base_bid])
+            self.integrator.nq = int(self.model.nq)
+            self.integrator.nv = int(self.model.nv)
         mujoco.mj_forward(self.model, self.data)
         self.t = 0.0
         return self.observe()
