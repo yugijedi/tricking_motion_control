@@ -1,5 +1,6 @@
 import casadi as ca
 import numpy as np
+#from helpers import LQR
 
 def make_stepper(f, dt):
     """
@@ -38,13 +39,13 @@ def linearize_discrete(F):
     return Ad_fun, Bd_fun
 
 
-def forward(x0, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None):
+def forward(x_init, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None):
     """
     Forward simulation with optional hybrid dynamics and early stopping.
 
     Parameters
     ----------
-    x0 : casadi.DM (8x1)
+    x_init : casadi.DM (8x1)
         Initial state.
     u  : array-like, shape (N, 1) or (1, N)
         Control sequence over N steps.
@@ -82,7 +83,7 @@ def forward(x0, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None):
     F = make_stepper(f_dyn, dt)
 
     c1, c2 = float(c0[0]), float(c0[1])
-    x = x0
+    x = x_init
 
     X_hist = np.zeros((N+1, 8), dtype=float)
     C_hist = np.zeros((N+1, 2), dtype=float)

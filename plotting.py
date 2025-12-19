@@ -62,20 +62,19 @@ def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep
     plt.tight_layout()
     plt.show()
 
-def show_pendulum(X, C1, C2, ts, dt, p_val, gif_path="motion.gif"):
+def show_pendulum(X, C1, C2, dt, p_val, gif_path="motion.gif"):
     """
     X   : (N, 8) array of states [rCMy,rCMz,qmean,qrel,vCMy,vCMz,dqmean,dqrel]
     C1  : (N,) contact flag 1
     C2  : (N,) contact flag 2
     ts  : (N,) time vector (only used for consistency / potential future use)
     dt  : scalar time step (used for playback speed)
-    p_val : DM or array with parameters [m,M,l,k,kappa,J,g]
+    p : DM or array with parameters [m,M,l,k,kappa,J,g]
     """
 
     X = np.asarray(X)
     C1 = np.asarray(C1).flatten()
     C2 = np.asarray(C2).flatten()
-    ts = np.asarray(ts).flatten()
 
     N = X.shape[0]           # number of time steps
 
@@ -151,8 +150,6 @@ def show_pendulum(X, C1, C2, ts, dt, p_val, gif_path="motion.gif"):
     plt.close(fig)
     return Image(filename=gif_path)
 
-import numpy as np
-import matplotlib.pyplot as plt
 
 def plot_eigs_unit_circle(eigvals, ax=None, title="Discrete-time eigenvalues"):
     """
