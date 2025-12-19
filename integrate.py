@@ -90,6 +90,7 @@ def forward(x_init, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None)
     t_hist = np.zeros((N+1,), dtype=float)
 
     X_hist[0, :] = np.array(x.T).flatten()
+    u = np.array(u).reshape(-1)
     C_hist[0, :] = [c1, c2]
     t_hist[0] = 0.0
 
