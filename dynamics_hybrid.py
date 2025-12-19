@@ -56,13 +56,16 @@ L = T - V
 phi1 = qmean - 0.5*qrel
 phi2 = qmean + 0.5*qrel
 rBy = rCMy + 2*m*l/(M+2*m)*ca.sin(qmean)*ca.cos(qrel/2)
-rBz = rCMz - 2*m*l/(M+2*m)*ca.cos(qmean)*ca.cos(qrel/2)
+rBz = rCMz + 2*m*l/(M+2*m)*ca.cos(qmean)*ca.cos(qrel/2)
 r1y = rBy - l*ca.sin(phi1)
-r1z = rBz + l*ca.cos(phi1)
+r1z = rBz - l*ca.cos(phi1)
 r2y = rBy - l*ca.sin(phi2)
-r2z = rBz + l*ca.cos(phi2)
+r2z = rBz - l*ca.cos(phi2)
+phi = ca.vertcat(phi1, phi2)
 r1 = ca.vertcat(r1y, r1z)
 r2 = ca.vertcat(r2y, r2z)
+rB = ca.vertcat(rBy, rBz)
+r = ca.vertcat(r1,r2,rB)
 
 # Contact Jacobians wrt q
 J1 = ca.jacobian(r1, q)
@@ -110,6 +113,7 @@ ddq_2 = sol2[:4]; lam_2 = sol2[4:]
 # Contact detection and logic
 # -------------------------
 eps_g, eps_lam, eps_sep = 1e-7, 1e-9, 1e-9
+eps_td = 1e-4   # how far below 0 we still consider a "fresh" touchdown
 
 # --- gate invalid initial contact flags ---
 near1 = ca.if_else(r1[1] <= eps_g, 1, 0)
@@ -117,9 +121,26 @@ near2 = ca.if_else(r2[1] <= eps_g, 1, 0)
 c1s = ca.if_else(c1 > 0.5, near1, 0)
 c2s = ca.if_else(c2 > 0.5, near2, 0)
 
-# --- touchdown detection ---
-hit1 = ca.if_else(ca.logic_and(r1[1] <= 0, v1[1] < 0), 1, 0)
-hit2 = ca.if_else(ca.logic_and(r2[1] <= 0, v2[1] < 0), 1, 0)
+# --- touchdown detection (only near the surface) ---
+# Only count a hit if:
+#  - tip is at or just below 0 (not deeply penetrated)
+#  - moving downward
+hit1 = ca.if_else(
+    ca.logic_and(
+        ca.logic_and(r1[1] <= 0, r1[1] > -eps_td),
+        v1[1] < 0
+    ),
+    1, 0
+)
+
+hit2 = ca.if_else(
+    ca.logic_and(
+        ca.logic_and(r2[1] <= 0, r2[1] > -eps_td),
+        v2[1] < 0
+    ),
+    1, 0
+)
+
 both = hit1 * hit2
 hit1 = ca.if_else(both, ca.if_else(r1[1] < r2[1], 1, 0), hit1)
 hit2 = ca.if_else(both, ca.if_else(r2[1] < r1[1], 1, 0), hit2)
@@ -181,4 +202,127 @@ f = ca.Function(
     [dxdt, lam_out, n1, n2, dq_plus],
     ['x','u','p','c1','c2'],
     ['dxdt','lambda','c1_new','c2_new','dq_plus']
+)
+
+# -----------------------
+# Forward Kinematics
+# -----------------------
+'''
+q_to_rphi = ca.Function('q_to_rphi',
+                      [q,p,c1,c2],
+                      [phi,r,p,c1,c2],
+                      ['q','p','c1','c2'],
+                      ['phi','r','p','c1','c2'])
+'''
+
+# -------------------------
+# Inverse map inputs (must be NEW symbols because they are function inputs)
+# -------------------------
+c = ca.MX.sym('c', 2)          # [c1,c2]
+rtip = ca.MX.sym('rtip', 2)    # [y,z] of provided tip (see rules)
+phi_in = ca.MX.sym('phi', 2)   # [phi1,phi2], user convention: (0,0) hangs down
+
+c1i, c2i = c[0], c[1]
+
+# If your phi_in already matches the internal convention of your FK, remove "+ ca.pi"
+phi1_i = phi_in[0]
+phi2_i = phi_in[1]
+
+# Same relations you already use (just "solved" for qmean/qrel)
+qmean_i = 0.5*(phi1_i + phi2_i)
+qrel_i  = (phi2_i - phi1_i)
+
+# Decide which tip is being referenced, per your rules:
+# (0,0) -> use tip1 (and rtip is r1)
+# (1,0) -> tip1 contact (clamp z=0)
+# (0,1) -> tip2 contact (clamp z=0)
+use1 = ca.if_else(c1i > 0.5, 1, 0)
+use2 = ca.if_else(use1 > 0.5, 0, ca.if_else(c2i > 0.5, 1, 0))
+use1 = ca.if_else((use1 + use2) < 0.5, 1, use1)  # default to tip1 for (0,0)
+
+in_stance = ca.if_else((c1i + c2i) > 0.5, 1, 0)
+
+phi_tip = ca.if_else(use1 > 0.5, phi1_i, phi2_i)
+
+# Apply your stance rule: contacting tip has z=0; flight uses provided z
+rtip_y = rtip[0]
+rtip_z = ca.if_else(in_stance > 0.5, 0, rtip[1])
+
+# Reuse your geometry (this is the algebraic inverse of your r1/r2 definitions)
+# r_tip_y = rBy - l*sin(phi_tip)
+# r_tip_z = rBz + l*cos(phi_tip)
+# => rBy = r_tip_y + l*sin(phi_tip)
+# => rBz = r_tip_z - l*cos(phi_tip)
+rBy_i = rtip_y + l*ca.sin(phi_tip)
+rBz_i = rtip_z + l*ca.cos(phi_tip)
+
+# Reuse your existing COM<->B relation (same alpha, same cos(qrel/2) term)
+alpha = 2*m*l/(M+2*m)
+cqh = ca.cos(qrel_i/2)
+
+rCMy_i = rBy_i - alpha*ca.sin(qmean_i)*cqh
+rCMz_i = rBz_i - alpha*ca.cos(qmean_i)*cqh
+
+q_inv = ca.vertcat(rCMy_i, rCMz_i, qmean_i, qrel_i)
+
+rphi_to_q = ca.Function(
+    'rphi_to_q',
+    [c, rtip, phi_in, p],
+    [q_inv],
+    ['c', 'rtip', 'phi', 'p'],
+    ['q']
+)
+
+# -----------------------------------
+# Velocity inverse: (c, dphi, q) → dq
+# -----------------------------------
+# Jacobian helpers (reuse existing J1,J2)
+J1_fun = ca.Function('J1_fun', [q, p], [J1])
+J2_fun = ca.Function('J2_fun', [q, p], [J2])
+
+c_v    = ca.MX.sym('c_v', 2)      # [c1,c2]
+dphi   = ca.MX.sym('dphi', 2)     # [dphi1, dphi2]
+q_in   = ca.MX.sym('q_in', 4)     # [rCMy,rCMz,qmean,qrel]
+
+c1v, c2v = c_v[0], c_v[1]
+
+# angle rates in your convention
+dphi1 = dphi[0]
+dphi2 = dphi[1]
+
+dqmean_v = 0.5*(dphi1 + dphi2)
+dqrel_v  = (dphi2 - dphi1)
+dqa      = ca.vertcat(dqmean_v, dqrel_v)
+
+# same stance selection logic as before
+use1_v = ca.if_else(c1v > 0.5, 1, 0)
+use2_v = ca.if_else(use1_v > 0.5, 0, ca.if_else(c2v > 0.5, 1, 0))
+use1_v = ca.if_else((use1_v + use2_v) < 0.5, 1, use1_v)  # default to leg1 if flight
+
+in_stance_v = ca.if_else((c1v + c2v) > 0.5, 1, 0)
+
+# flight case: CM velocity can be chosen freely; here we take zero
+vCM_flight = ca.vertcat(0, 0)
+
+# stance case: solve J_pos * vCM + J_ang * dqa = 0 for vCM
+J1_here = J1_fun(q_in, p)
+J2_here = J2_fun(q_in, p)
+
+J_tip = ca.if_else(use1_v > 0.5, J1_here, J2_here)
+
+J_pos = J_tip[:, 0:2]   # wrt [vCMy, vCMz]
+J_ang = J_tip[:, 2:4]   # wrt [dqmean, dqrel]
+
+vCM_stance = -ca.solve(J_pos, ca.mtimes(J_ang, dqa))
+
+vCM = ca.if_else(in_stance_v > 0.5, vCM_stance, vCM_flight)
+
+dq_inv = ca.vertcat(vCM[0], vCM[1], dqmean_v, dqrel_v)
+
+drphi_to_dq = ca.Function(
+    'drphi_to_dq',
+    [c_v, dphi, q_in, p],
+    [dq_inv],
+    ['c', 'dphi', 'q', 'p'],
+    ['dq']
 )
