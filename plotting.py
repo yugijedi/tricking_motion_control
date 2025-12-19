@@ -5,9 +5,9 @@ from matplotlib.animation import FuncAnimation
 from IPython.display import Image
 
 def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep) format
-    x = np.array(x)
-    u = np.array(u)
-    xref = np.array(xref)
+    x = np.array(x).T
+    u = np.array(u).T
+    xref = np.array(xref).T
 
     plt.figure(figsize=(12, 8))
 

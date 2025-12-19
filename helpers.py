@@ -65,7 +65,8 @@ def forward_linear(x_init, p, c, dt, N, u_init=0, x_d=None, u_d=None, Q=None, R=
         dx[:, k + 1] = ca.mtimes(A, dx[:, k]) + ca.mtimes(B, du[:, k])
 
     # reconstructed linear state
-    x = np.array(ca.repmat(x_d, 1, N + 1) + dx)
-    u = np.array(ca.repmat(u_d, 1, N) + du)
+    x = np.array(ca.repmat(x_d, 1, N + 1) + dx).T
+    u = np.array(ca.repmat(u_d, 1, N) + du).T
     t = np.linspace(0, N * dt, N + 1)
+
     return t, x, u
