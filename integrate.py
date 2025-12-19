@@ -47,7 +47,7 @@ def forward(x_init, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None)
     ----------
     x_init : casadi.DM (8x1)
         Initial state.
-    u  : array-like, shape (N, 1) or (1, N)
+    u  : array-like, shape (N, 1)
         Control sequence over N steps.
     p  : casadi.DM or array-like
         Parameter vector.
@@ -88,7 +88,6 @@ def forward(x_init, u, p, dt, N, c0=(0.0, 0.0), f_dyn=None, stop_condition=None)
     X_hist = np.zeros((N+1, 8), dtype=float)
     C_hist = np.zeros((N+1, 2), dtype=float)
     t_hist = np.zeros((N+1,), dtype=float)
-    u = np.array(u.T)  # assume u is (1,N) or (N,1); make it (N,)
 
     X_hist[0, :] = np.array(x.T).flatten()
     C_hist[0, :] = [c1, c2]

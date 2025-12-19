@@ -13,10 +13,10 @@ def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep
 
     # 1) Angles vs ref
     plt.subplot(2, 2, 1)
-    plt.plot(t, xref[2],'--', label='qmean_ref')
-    plt.plot(t, x[2], label='qmean')
-    plt.plot(t, xref[3],'--', label='qrel_ref')
-    plt.plot(t, x[3], label='qrel')
+    plt.plot(t, xref[:,2],'--', label='qmean_ref')
+    plt.plot(t, x[:,2], label='qmean')
+    plt.plot(t, xref[:,3],'--', label='qrel_ref')
+    plt.plot(t, x[:,3], label='qrel')
     plt.axhline(y=0, color='grey')
     #plt.ylim(-2*np.pi, 2*np.pi)
     plt.xlabel('t [s]')
@@ -26,10 +26,10 @@ def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep
 
     # 2) Angular velocities vs ref
     plt.subplot(2, 2, 2)
-    plt.plot(t, xref[6],'--', label='dqmean_ref')
-    plt.plot(t, x[6], label='dqmean')
-    plt.plot(t, xref[7],'--', label='dqrel_ref')
-    plt.plot(t, x[7], label='dqrel')
+    plt.plot(t, xref[:,6],'--', label='dqmean_ref')
+    plt.plot(t, x[:,6], label='dqmean')
+    plt.plot(t, xref[:,7],'--', label='dqrel_ref')
+    plt.plot(t, x[:,7], label='dqrel')
     plt.axhline(y=0, color='grey')
     #plt.ylim(-10*np.pi, 10*np.pi)
     plt.xlabel('t [s]')
@@ -39,10 +39,10 @@ def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep
 
     # 3) CM position
     plt.subplot(2, 2, 3)
-    plt.plot(t, xref[0],'--', label='rCMy_ref')
-    plt.plot(t, x[0], label='rCMy')
-    plt.plot(t, xref[1],'--', label='rCMz_ref')
-    plt.plot(t, x[1], label='rCMz')
+    plt.plot(t, xref[:,0],'--', label='rCMy_ref')
+    plt.plot(t, x[:,0], label='rCMy')
+    plt.plot(t, xref[:,1],'--', label='rCMz_ref')
+    plt.plot(t, x[:,1], label='rCMz')
     plt.axhline(y=0, color='grey')
     #plt.ylim(-2, 2)
     plt.xlabel('t [s]')
@@ -52,7 +52,7 @@ def plot_solution(t,x,u,xref=None,dt=0.02): #x and u in casadi (n_dof,n_timestep
 
     # 4) Control
     plt.subplot(2, 2, 4)
-    plt.step(t[:-1], u[0], where='post')
+    plt.step(t[:-1], u[:,0], where='post')
     plt.axhline(y=0, color='grey')
     plt.xlabel('t [s]')
     #plt.ylim(-10, 10)
